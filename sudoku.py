@@ -1,3 +1,5 @@
+import copy
+
 import numpy as np
 
 
@@ -5,9 +7,23 @@ def count_occ(arr, i): return np.count_nonzero(arr == i)
 
 
 class SudokuState:
-    def __init__(self, state, n=9):
+    def __init__(self, state, n=9, block_size=3):
         self.state = state
         self.n = n
+        self.block_size = block_size
+
+        # Produce a 2d array containing sets of 1-9 for each cell.
+        self.possible_values = [
+            [set(i for i in range(1, 10)) for _ in range(n)] for _ in range(n)
+        ]
+
+        # Remove impossible values
+        # todo: Is there a better way of doing this?
+        for x in range(self.n):
+            for y in range(self.n):
+                value = state[y][x]
+                if value != 0:
+                    self.possible_values = self.set_value((x, y), value).possible_values
 
     def rows(self):
         """Returns list of rows in this state"""
@@ -34,7 +50,8 @@ class SudokuState:
 
     def get_blocks(self):
         """ Returns an array of all blocks in this state as flat arrays."""
-        size = 3
+        size = self.block_size
+
         block_idx = range(0, self.n, size)
         # Splice flattened (size x size) blocks from board.
 
@@ -53,12 +70,54 @@ class SudokuState:
             for j in block_idx
         ]
 
-    def update_cell(self, pos, new_value):
-        """Change value at position (x, y) to new_value, with no checking for validity."""
-        self.state[pos[1], pos[0]] = new_value
+    def set_value(self, pos: (int, int), new_value: int, deep_copy=True):
+        """Creates a new state with new_value at the given pos. Check for validity and updates possible states.
+        set deep_copy to False if the new state will be used to update this state.
+        """
+
+        (x, y) = pos
+
+        # Check if new_value is possible
+        if new_value not in self.possible_values[y][x]:
+            raise ValueError(f"New value {new_value} not in possible values for cell position {pos}:"
+                             f" {self.possible_values[y][x]}")
+
+        # Make new state, update value and change possible_values
+        state = copy.deepcopy(self)
+
+        state.state[y, x] = new_value
+        state.possible_values[y][x] = set()
+
+        # Remove new value from row and column it exists in
+        for i in range(state.n):
+            # Remove new value from column
+            state.possible_values[i][x].discard(new_value)
+
+            # Remove new value from row
+            state.possible_values[y][i].discard(new_value)
+
+        size = self.block_size
+
+        # Round pos down to nearest multiple of block_size (get 0,0 of block)
+        (block_x, block_y) = map(lambda a: (a // size) * size, pos)
+
+        # Remove new value from block it exists in
+        for x in range(block_x, block_x + size):
+            for y in range(block_y, block_y + size):
+                state.possible_values[y][x].discard(new_value)
+
+        return state
 
     def __str__(self):
         return f"{self.state}\nValid: {self.is_valid()}, Goal: {self.is_goal()}"
+
+
+def pick_next_column(state):
+    pass
+
+
+def order_values(state, pos):
+    pass
 
 
 def sudoku_solver(sudoku):
@@ -92,7 +151,6 @@ print()
 print("First sudoku:")
 # print(sudoku[0], "\n")
 s = SudokuState(sudoku[0])
-# s.update_cell((0, 1), 1)
 print(s)
 
 # ...and its solution
