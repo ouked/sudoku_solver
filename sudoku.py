@@ -4,20 +4,22 @@ import numpy as np
 from collections import Counter
 
 
-def has_duplicate_non_zero_elements(arr):
-    list([item for item, c in Counter(arr).items() if item != 0 and c > 1])
-
-
 class SudokuState:
+    valid_row_cache = {}
+
     def __init__(self, state, n=9, block_size=3):
         self.values = state
         self.n = n
         self.block_size = block_size
         self.solvable = True
+        self.valid = True
+
+        self.value_freq = {d: 0 for d in range(1, 10)}
+        self.saturated_values = set()
 
         # Produce a 2d array containing sets of 1-9 for each cell.
         self.possible_values = [
-            [set(digit for digit in range(1, 10)) for _ in range(n)] for _ in range(n)
+            [{1, 2, 3, 4, 5, 6, 7, 8, 9} for _ in range(n)] for _ in range(n)
         ]
 
         # Remove impossible values
@@ -26,11 +28,27 @@ class SudokuState:
                 if value not in self.possible_values[y][x]:
                     self.solvable = False
                     return
+
                 self.possible_values[y][x] = set()
                 self.update_possible_values(x, y, value)
 
+                if value != -1:
+                    self.count(value)
+
+        self.update_valid()
+
+    def count(self, val):
+        self.value_freq[val] += 1
+
+        if self.value_freq[val] == self.n:
+            self.saturated_values.add(val)
+
+        elif self.value_freq[val] > self.n:
+            self.solvable = False
+
     def set_value(self, pos: (int, int), new_value: int):
-        """Creates a new state with new_value at the given pos. Check for validity and updates possible states.
+        """
+        Creates a new state with new_value at the given pos. Check for validity and updates possible states.
         set deep_copy to False if the new state will be used to update this state.
         """
 
@@ -45,6 +63,9 @@ class SudokuState:
         state = copy.deepcopy(self)
 
         state.values[pos_y][pos_x] = new_value
+        state.update_valid()
+
+        state.count(new_value)
 
         state.possible_values[pos_y][pos_x] = set()
         state.update_possible_values(pos_x, pos_y, new_value)
@@ -52,13 +73,23 @@ class SudokuState:
         return state
 
     def update_possible_values(self, x, y, val):
+        def remove_possible_value(n, m):
+            nonlocal val
+            try:
+                self.possible_values[m][n].remove(val)
+
+                if len(self.possible_values[m][n]) == 0 and self.values[m][n] == 0:
+                    self.solvable = False
+            except KeyError:
+                pass
+            return self.solvable
+
         # Remove new value from row and column it exists in
         for i in range(self.n):
-            # Remove possible value from the new value's column
-            self.possible_values[i][x].discard(val)
-
             # Remove possible value from the new value's row
-            self.possible_values[y][i].discard(val)
+            if not remove_possible_value(i, y) or not remove_possible_value(x, i):
+                return
+        # Remove possible value from the new value's column
 
         size = self.block_size
 
@@ -68,9 +99,8 @@ class SudokuState:
         # Remove new value from block it exists in
         for a in range(block_x, block_x + size):
             for b in range(block_y, block_y + size):
-                self.possible_values[b][a].discard(val)
-                if self.values[b][a] == 0 and len(self.possible_values[b][a]) == 0:
-                    self.solvable = False
+                if not remove_possible_value(a, b):
+                    return
 
     def rows(self):
         """Returns list of rows in this state"""
@@ -102,30 +132,50 @@ class SudokuState:
             for j in block_idx
         ]
 
+    def has_duplicate_non_zero_elements(self, arr: list) -> bool:
+        # result = bool([item for item, c in Counter(arr).items() if c > 1 and item != 0])
+        # return result
+
+        t = tuple(arr)
+        if t in SudokuState.valid_row_cache:
+            return SudokuState.valid_row_cache[t]
+        result = bool([item for item, c in Counter(arr).items() if c > 1 and item != 0])
+        SudokuState.valid_row_cache[t] = result
+        return result
+
+    def update_valid(self):
+        pass
+        # if not self.solvable:
+        #     self.valid = False
+        #
+        # # Check rows, columns, and blocks
+        # for direction in [self.rows(), self.columns(), self.blocks()]:
+        #     # return False if any row, column or block has more than one occurrence of a number
+        #     for item in direction:
+        #         if self.has_duplicate_non_zero_elements(item):
+        #             self.valid = False
+        #
+        # self.valid = True
+
     def is_valid(self) -> bool:
         """Returns ``True`` if the state doesn't contain any illegal combinations of numbers"""
+        # return self.solvable and self.valid
+
         if not self.solvable:
             return False
 
-        # # Check numbers 1-9
-        # for i in range(1, 10):
-        #     # Check rows, columns, and blocks
-        #     for direction in [self.rows(), self.columns(), self.blocks()]:
-        #         # return False if any row, column or block has more than one occurrence of a number
-        #         if any(count_occ(item, i) > 1 for item in direction):
-        #             return False
-
-        # Check rows, columns, and blocks
+            # Check rows, columns, and blocks
         for direction in [self.rows(), self.columns(), self.blocks()]:
             # return False if any row, column or block has more than one occurrence of a number
             for item in direction:
-                if has_duplicate_non_zero_elements(item):
+                if self.has_duplicate_non_zero_elements(item):
                     return False
+
         return True
 
     def is_goal(self):
         """Returns ``True`` if the state is a 'goal' or 'winning' state"""
-        return self.is_valid() and (np.count_nonzero(self.values == 0) == 0)
+        return (np.count_nonzero(self.values == 0) == 0) and self.is_valid()
 
     def __str__(self):
         return f"{self.values}\nValid: {self.is_valid()}, Goal: {self.is_goal()}"
@@ -138,6 +188,9 @@ class SudokuState:
         state.block_size = self.block_size
         state.solvable = self.solvable
         state.possible_values = [[cell.copy() for cell in row] for row in self.possible_values]
+        state.value_freq = self.value_freq.copy()
+        state.saturated_values = self.saturated_values.copy()
+        state.valid = self.valid
 
         return state
 
@@ -152,6 +205,7 @@ def pick_next_cell(state: SudokuState):
     pos = (0, 0)
     minimum = 10
 
+    # todo Do this as you go?
     for (y, x), values in np.ndenumerate(state.values):
         n_poss_values = len(state.possible_values[y][x])
         if 0 < n_poss_values < minimum:
@@ -171,10 +225,16 @@ def order_values(state: SudokuState, pos: (int, int)):
     :return: List of values to try
     """
     (x, y) = pos
-    return [val for val in list(state.possible_values[y][x]) if state.set_value(pos, val).solvable]
+    # return [val for val in list(state.possible_values[y][x]) if state.set_value(pos, val).solvable]
+    result = sorted(
+        [val for val in list(state.possible_values[y][x]) if
+         val not in state.saturated_values and state.set_value(pos, val).solvable],
+        key=lambda item: state.value_freq[item], reverse=False
+    )
+    return result
 
 
-def depth_first_search(state: SudokuState) -> SudokuState:
+def backtrack(state: SudokuState) -> SudokuState:
     """
     Solves sudoku using depth_first_search
     :param state: State to solve from
@@ -185,13 +245,16 @@ def depth_first_search(state: SudokuState) -> SudokuState:
     pos = pick_next_cell(state)
 
     values = order_values(state, pos)
+
     for val in values:
         new_state = state.set_value(pos, val)
         if new_state.is_goal():
             solved_sudoku = new_state
             break
+
         if new_state.is_valid():
-            deep_state = depth_first_search(new_state)
+            deep_state = backtrack(new_state)
+
             if deep_state is not None and deep_state.is_goal():
                 solved_sudoku = deep_state
                 break
@@ -211,7 +274,7 @@ def sudoku_solver(state: np.ndarray) -> np.ndarray:
         9x9 numpy array of integers
             It contains the solution, if there is one. If there is no solution, all array entries should be -1.
     """
-    return depth_first_search(SudokuState(state)).values
+    return backtrack(SudokuState(state)).values
 
 
 if __name__ == "__main__":
