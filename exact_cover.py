@@ -1,6 +1,4 @@
-import copy
 import numpy as np
-from enum import Enum
 
 
 class SudokuState:
@@ -50,20 +48,24 @@ class SudokuState:
         # Popped columns
         columns = []
 
-        # For constraint this rcv is associated with
+        # For constraint rcv satisfies
         for c in SudokuState.b[rcv]:
 
-            # For other rcv that satisfy c
+            # For other rcv that ALSO satisfy c
             for other_rcv in self.a[c]:
 
                 # For other constraints that the other rcv satisfies
                 for other_c in self.b[other_rcv]:
 
+                    # Remove other_rcv from the other constraint
+                    # (Remove row)
                     if other_c != c:
                         self.a[other_c].remove(other_rcv)
 
             # Pop column from this row, and save for later
+            # (Remove Column)
             columns.append(self.a.pop(c))
+
         return columns
 
     def deselect_row(self, rcv: (int, int, int), columns):
@@ -177,7 +179,7 @@ class SudokuState:
             ("Block", (block, v))
         ]
 
-    error_grid = np.array([[-1 for _ in range(9)] for _ in range(9)])
+    error_grid = np.full((9, 9), fill_value=-1)
 
 
 def sudoku_solver(state: np.ndarray) -> np.ndarray:
@@ -187,12 +189,14 @@ def sudoku_solver(state: np.ndarray) -> np.ndarray:
     :return: 9x9 solved sudoku grid, or error grid
     """
     result = backtrack(SudokuState(state))
-
     # Return result if valid
     if result is not None:
         return result.apply_solution()
     else:
         return SudokuState.error_grid
+
+
+
 
 
 def backtrack(state: SudokuState) -> SudokuState or None:
@@ -209,7 +213,7 @@ def backtrack(state: SudokuState) -> SudokuState or None:
         return None
 
     const, rows = pick
-    values = sorted(list(rows))
+    values = list(rows)
 
     for rcv in values:
         # Using select_row and deselect_row means that we don't need to make (deep) copies of the state, which are
