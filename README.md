@@ -3,16 +3,6 @@
 An agent to solve sudoku puzzles by approaching them as exact cover problems. This was coursework for my Artificial
 Intelligence module at University of Bath.
 
-## Previous & Current  Performance
-
-Previous attempts to write agents to solve sudokus yielded a **single hard solution** in around **40 seconds**, using
-backtracking and naive constraint propagation. After a variety of optimisations (such as caching, forward checking,
-predictions via distribution of numbers and writing my own `deepcopy` function), this was reduced to about **2 seconds**
-. With the given target of under one second, I still wasn't satisfied.
-
-After learning how to approach sudokus as **exact cover** problems, and implementing Donald Knuth's Algorithm X, what
-was taking 40 seconds before, now only takes **0.03 seconds**.
-
 ## Usage
 
 To obtain a solution, pass `sudoku_solver` a `numpy.ndarray((9,9), ...)`. Examples of input can be found in `/data`.
@@ -29,14 +19,38 @@ print(solution)  # This will print the solution, or a 9x9 grid of '-1'.
 ## Introduction
 
 This was a deeply engaging and educative challenge that I spent a lot of time on. I'm very proud of the results my work
-has yielded.
+has yielded. Personally, this coursework required two attempts. The first to get my head around backtracking,
+constraint-propagation and reducing processing time by reducing inefficiencies from my code; the second to approach the 
+problem slightly differently to meet the sub-one-second target (and re-implement the aforementioned optimisations).
+
+### First Attempt
+My first attempt was a simple backtracking algorithm that would recursively try each of a cell's possible values, and
+update the associated cells' possible values accordingly. This was a simple implementation of **backtracking** and 
+**constraint-propagation**.
+
+The first time this worked it took the agent about **40 seconds** to solve a single "hard" puzzle. I was happy to find
+that my code was working, though I wanted to aim to solve a single puzzle in under a second on my machine.
+
+After optimisations including simplifying loops, caching, forward-checking, value frequency analysis and implementing a 
+specialised `deepcopy` function, I got this time down to about **2 seconds**. A lot closer, but still too slow.
+
+### Second Attempt
+I decided to start again, and learnt how to approach sudokus as **exact cover** problems (mainly thanks to Andy G's
+blog post [4]).
+My first implementation of Donald Knuth's Algorithm X [1] resulted in a hard sudoku taking **10 seconds**. This was
+worse than my previous best, but was a lot better than my previous first attempt. Through similar (but fewer)
+optimisations (includng the complete removal of deep-copying objects), my submission now takes **< 0.1 seconds** to
+solve a "hard" sudoku puzzle.
+
+> This document will mainly focus on methodologies present in the second attempt, but will still occasionally reference
+> the first.
 
 ## Exact Covers
 
 ### What is an Exact Cover?
 
 An **exact cover** is a collection of subsets of `S` such that every element in `S` is found in _exactly one_ of the
-subsets.
+subsets. [2]
 
 #### Example
 
@@ -77,20 +91,26 @@ such a matrix.
 | D   | 0 | 0 | 1 | 1 | 1 | 0 | 0 |
 | E   | 1 | 1 | 1 | 1 | 0 | 0 | 0 |
 
-Taken from the [Wikipedia Page](https://en.wikipedia.org/wiki/Knuth%27s_Algorithm_X):
-> 1) If the matrix A has no columns, the current partial solution is a valid solution; terminate successfully.
-> 2) Otherwise choose a column c (deterministically).
-> 3) Choose a row r such that Ar, c = 1 (nondeterministically).
-> 4) Include row r in the partial solution.
-> 5) For each column j such that Ar, j = 1,
-     >
+The algorithm is as follows:
+```
+If A is empty, the problem is solved; terminate successfully.
 
-1) for each row i such that Ai, j = 1,
-   >
-1) delete row i from matrix A.
+Otherwise choose a column, c (deterministically).
+Choose a row, r, such that A[r, c] = 1 (nondeterministically).
 
->     2) delete column j from matrix A.
-> 6) Repeat this algorithm recursively on the reduced matrix A.
+Include r in the partial solution.
+
+For each j such that A[r, j] = 1, 
+    delete column j from matrix A; 
+    
+    for each i such that A[i, j] = 1,
+        delete row i from matrix A.
+        
+Repeat this algorithm recursively on the reduced matrix A.
+```
+
+> Taken from **page 4** of 
+> [Knuth's "Dancing Links" paper](https://www.ocf.berkeley.edu/~jchu/publicportal/sudoku/0011047.pdf) [1]
 
 In simpler terms, the algorithm takes an element `e` to cover, and finds a row which does this. This row is added to our
 solution, and every row that also covers `e` is removed from `A`, along with every column that the chosen row also
@@ -147,6 +167,9 @@ expansive matrix:
 
 Now that we have our matrix `A`, we can apply Algorithm X to generate solutions.
 
+> **Note**: I learnt all of this from Andy G.'s excellent explanation
+[here](https://gieseanw.wordpress.com/2011/06/16/solving-sudoku-revisited/) [4].
+
 ## My Implementation of Algorithm X
 
 After `sudoku_solver` is passed the initial state, it passes it on to `backtrack`, which is the main driver function.
@@ -202,7 +225,8 @@ time it took.
 
 As the `copy.deepcopy` function is made to make an independent copy of an arbitrary object, it will be doing a lot of
 unnecessary processing in this context. Looking in `copy.py` shows the amount of checks that occur everytime a copy is
-needed. These checks would be necessary if the object I was copying contained references to itself, however it doesn't.
+needed. These checks would be necessary if the object I was copying contained references to itself [5], however in this
+particular case, it doesn't. 
 
 Writing a new `deepcopy` method was as simple as creating a new object of the same class, and setting the fields to the
 values of the copied object.
@@ -226,8 +250,8 @@ def __deepcopy__(self, memodict={}):
     return state
 ```
 
-> **Note**: This is a precise, fast and error-prone way of copying an object. This approach requires you to update `deepcopy`
-> everytime a new field is added to the class that is being copied.
+> **Note**: This is a precise, fast and error-prone way of copying an object. This approach requires you to update 
+> `deepcopy` everytime a new field is added to the class that is being copied.
 
 
 This was being used for a while in my new exact cover solution, though now it uses the `select_row`,  `deselect_row`,
@@ -244,22 +268,69 @@ before returning.
 To reduce bugs and improve readability, I was using enums for constraints. This meant that typos would be instantly
 recognised. However, after investigating, I found that just using strings is much faster.
 
+After researching online, I found that Python's slow enums have been discussed, and were at one point 20x slower than
+normal lookups (Python 3.4) [6]. This has been fixed, though there is still an open issue on the python bug tracker
+complaining about the speed for Python 3.9. [7]
+
 As this change was made after the majority of development, it meant that no typo-induced bugs were introduced.
 
 ## Learning Outcomes
 
-### Depth-First Search, Constraint Propagation and Forward Checking
+- Depth-First Search, Constraint Propagation and Forward Checking
 
-### Exact Cover Problems and Knuth's Algorithm X
+- Exact Cover Problems and Knuth's Algorithm X
 
-### Implementing Previously-Theoretical Ideas
+- Implementing Previously-Theoretical Ideas
 
-### Python's Enums are Slow
+- Python's Enums are Slow
 
-### How to Spell "Sudoku"
-
-My poor spell checker.
+- How to Spell "Sudoku"
 
 ## Future Development
 
+Early attempts at this project included functionality to solve sudokus that weren't the standard 9x9 grid. As this 
+feature would be untested, and most likely riddled with bugs, I decided that for my final submission, I should submit
+code with the 9x9 assumed and expected throughout. I believe it would be a good exercise to re-implement some more
+generality: perhaps it could solve **16x16 hexadecimal sudokus**, such as this one:
+
+![Hex sudoku](http://4.bp.blogspot.com/-OuYfLL6Ofvo/Ut-Ko5IffJI/AAAAAAAAAGE/fNqAj8Q8U1A/s1600/2014-01-22-puzzle.png)
+
+[8]
+
 ## References
+[1] Knuth, Donald. 2000.
+_Dancing Links_
+Available from: https://www.ocf.berkeley.edu/~jchu/publicportal/sudoku/0011047.pdf
+[Accessed 11 March 2021]
+
+[2] Dahike, Karl. 2019.
+_Exact Cover_ [Online]
+Available from: https://www.mathreference.com/lan-cx-np,excov.html
+[Accessed 11 March 2021]
+
+[3] _removed_
+
+[4] G, Andy. 2011.
+_Solving Sudoku, Revisited_ [Online]
+Available from: https://gieseanw.wordpress.com/2011/06/16/solving-sudoku-revisited/
+[Accessed 11 March 2021]
+
+[5] Python Software Foundation. 2021.
+_copy — Shallow and deep copy operations_
+Available from: https://docs.python.org/3/library/copy.html
+[Accessed 11 March 2021]
+
+[6] craigh, 2015. 
+_Enum member lookup is 20x slower than normal class attribute lookup_ [Online]. 
+Available from: https://bugs.python.org/issue23486
+[Accessed 11 March 2021]
+
+[7] MrMrRobat, 2019. 
+_Increase Enum performance_ [Online]. 
+Available from: https://bugs.python.org/issue39102 
+[Accessed 11 March 2021]
+
+[8] Matt, 2014.
+2014-01-22 Hexadecimal Sudoku
+Available from: http://mattspuzzleblog.blogspot.com/2014/01/2014-01-22-hexadecimal-sudoku.html
+[Accessed 11 March 2021]
