@@ -22,6 +22,7 @@ def run_tests(difficulties=None, limit=None):
         solutions = np.load(f"data/{difficulty}_solution.npy")
 
         count = 0
+        maximum_time = 0
         for i in range(min(limit, len(sudokus))):
             # for i in range(1):
             sudoku = sudokus[i].copy()
@@ -44,13 +45,14 @@ def run_tests(difficulties=None, limit=None):
                 print(solutions[i])
 
             print("This sudoku took", end_time - start_time, "seconds to solve.\n")
-
+            maximum_time = max(end_time - start_time, maximum_time)
         print(f"{count}/{len(sudokus)} {difficulty} sudokus correct")
         if count < len(sudokus):
             break
 
     whole_end_time = time.process_time()
     print("\nAll puzzles took", whole_end_time - whole_start_time, "seconds to solve.\n")
+    print("\nMax time:", maximum_time)
 
 
 if __name__ == "__main__":
