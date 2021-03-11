@@ -247,7 +247,9 @@ def backtrack(state: SudokuState) -> SudokuState:
     values = order_values(state, pos)
 
     for val in values:
+
         new_state = state.set_value(pos, val)
+
         if new_state.is_goal():
             solved_sudoku = new_state
             break
