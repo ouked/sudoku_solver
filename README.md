@@ -1,7 +1,7 @@
 # Sudoku Solver 🧩
 
-An agent to solve sudoku puzzles by approaching them as exact cover problems. This was coursework for my Artificial
-Intelligence module at University of Bath. Can solve a "hard" sudoku in under 50 milliseconds on my machine.
+An agent to solve sudoku puzzles by approaching them as exact cover problems, made for my Artifical Intelligence module
+at University of Bath. On my machine, it can solve a "hard" sudoku in under 7 milliseconds.
 
 ## Usage
 
@@ -18,10 +18,9 @@ print(solution)  # This will print the solution, or a 9x9 grid of '-1'.
 
 ## Introduction
 
-This was a deeply engaging and educative challenge that I spent a lot of time on. I'm very proud of the results my work
-has yielded. Personally, this coursework required two attempts. The first to get my head around backtracking,
-constraint-propagation and reducing processing time; the second to approach the problem slightly differently to meet the
-sub-one-second target (and re-implement the optimisations).
+This was a deeply engaging and educative challenge that I spent a lot of time on, and I'm very proud of the results. I
+made two attempts: The first to get my head around backtracking, constraint-propagation and reducing processing time;
+the second to approach the problem differently to meet the sub-one-second target.
 
 ### First Attempt
 
@@ -37,10 +36,12 @@ specialised `deepcopy` function, I got this time down to about **2 seconds**: a 
 
 ### Second Attempt
 
-I decided to start again, and learnt how to approach sudokus as **exact cover** problems (mainly thanks to Andy G's blog
-post [4]). My first implementation of Donald Knuth's Algorithm X [1] resulted in a hard sudoku taking **10 seconds**.
+I decided to start again, and learnt how to approach sudokus as **exact cover** problems (mainly thanks to Andy G's 2011
+blog post). My first implementation of Donald Knuth's (2000, p.4) Algorithm X resulted in a hard sudoku taking
+**10 seconds**.
+
 This was worse than my previous _best_, but a lot better than my previous _first_ attempt. Through similar (but fewer)
-optimisations (includng the complete removal of deep-copying objects), my submission now takes **less than 50
+optimisations (includng the complete removal of deep-copying objects), my submission now takes **less than 7
 milliseconds** to solve a "hard" sudoku puzzle.
 
 > This document will mainly focus on methodologies present in the second attempt, but will still occasionally reference
@@ -51,7 +52,7 @@ milliseconds** to solve a "hard" sudoku puzzle.
 ### What is an Exact Cover?
 
 An **exact cover** is a collection of subsets of `S` such that every element in `S` is found in _exactly one_ of the
-subsets. [2]
+subsets. (Dahlke, 2019)
 
 #### Example
 
@@ -82,7 +83,7 @@ Then the exact cover of `S` is the sets `A`, `C`, `D`:
 Before we discuss how we solve sudokus specifically, let's explore how to solve a _general_ exact cover problem.
 
 **Algorithm X** solves exact cover problems by using a matrix `A`, consisting of 1s and 0s. Let's put the above example
-such a matrix.
+in such a matrix...
 
 |     | 1 | 2 | 3 | 4 | 5 | 6 | 7 |
 |:---:|---|---|---|---|---|---|---|
@@ -111,8 +112,7 @@ For each j such that A[r, j] = 1,
 Repeat this algorithm recursively on the reduced matrix A.
 ```
 
-> Taken from **page 4** of
-> [Knuth's "Dancing Links" paper](https://www.ocf.berkeley.edu/~jchu/publicportal/sudoku/0011047.pdf) [1]
+_Knuth's (2000, p.4) Algorithm X_
 
 In simpler terms, the algorithm takes an element `e` to cover, and finds a row which does so. This row is added to the
 solution, and every row that also covers `e` is removed from `A`, along with every column that the chosen row also
@@ -156,7 +156,7 @@ sudoku contains:
 This is now an exact cover problem - **every element in our set of constraints needs to be covered exactly once**!
 
 From what we've realised from the nature of sudoku puzzles, we can construct our matrix `A` to represent our constraints
-and associated RCV combinations. The following is a few rows and columns from the expansive matrix:
+and associated RCV combinations. The following is a few rows and columns from the large (324 x 729) matrix:
 
 |      Constraints     | 0,0,1 | 0,0,2 |   | 4,4,1 |
 |----------------------|-------|-------|---|-------|
@@ -173,8 +173,7 @@ and associated RCV combinations. The following is a few rows and columns from th
 
 Now that we have our matrix `A`, we can apply Algorithm X to generate solutions.
 
-> **Note**: I learnt a majority of this from Andy G.'s excellent explanation
-[here](https://gieseanw.wordpress.com/2011/06/16/solving-sudoku-revisited/) [4].
+> **Note**: I learnt a majority of this from Andy G.'s (2011) excellent explanation
 
 ## My Implementation of Algorithm X
 
@@ -183,8 +182,8 @@ Now that we have our matrix `A`, we can apply Algorithm X to generate solutions.
 After `sudoku_solver` is passed the initial state, it passes it to `backtrack`, which is the main worker function. This
 is where Algorithm X is executed.
 
-`pick_constraint` will find the constraint with the smallest number of satisfying RCV tuples, which relate to rows in
-matrix `A`. These rows are tried in term, just as described before.
+`pick_constraint` will find the constraint with the smallest number of satisfying RCV tuples. These values are tested in
+turn, just as described before.
 
 ### Backtracking
 
@@ -200,41 +199,40 @@ def backtrack(state: SudokuState) -> SudokuState or None:
     :param state: State to solve
     :return: Solved state
     """
-    # Pick a column
-    pick = state.pick_constraint()
+    # Pick a constraint to satisfy
+    const = state.pick_constraint()
 
     # No more constraints to satisfy
-    if pick is None:
+    if const is None:
         return None
 
-    const, rows = pick
-    values = list(rows)
+    # List of satisfying RCV (row, column, value) tuples
+    satisfying_rcvs = list(state.a[const])
 
-    for rcv in values:
-        # Using select_row and deselect_row means that we don't need to make (deep) copies of the state, which are
-        # expensive.
+    for rcv in satisfying_rcvs:
+        # Add RCV to solutions, and save removed conflicting RCVs
+        removed = state.add_solution(rcv)
 
-        # Select the row, get and remove the associated columns
-        columns = state.select_row(rcv)
-        # Add rcv of row to solutions
-        state.add_solution(rcv)
-
-        # Return this state if it's correct
+        # Return this state if it's a goal
         if state.is_goal():
             return state
 
-        # Continue working on this state
+        # Continue trying this RCV
         deep_state = backtrack(state)
-        if deep_state is not None and deep_state.is_goal():
+
+        # Was a solution found?
+        if deep_state is not None:
             return deep_state
 
-        # Deselect and remove rcv from solution, so that we can try the next rcv
-        state.deselect_row(rcv, columns)
-        state.remove_solution(rcv)
+        # This RCV doesn't lead to a solved sudoku
+
+        # Remove RCV from solution and restore the matrix, so that we can try the next RCV
+        state.remove_solution(rcv, removed)
+
 ```
 
-As the first series of rows that are tried will likely **not** be the solution, eventually the algorithm will backtrack,
-and any changes made to the `SudokuState` object will need to be abandoned.
+If the first RCV that is tested doesn't lead to a goal state, the algorithm will backtrack and any changes made to the
+`SudokuState` object will need to be abandoned.
 
 Initially this was achieved by creating a deep copy of the `SudokuState` object at each level of the recursion, creating
 independent copies of mutable fields (namely `A`). However, creating these copies was inefficient and slowed the
@@ -242,12 +240,38 @@ algorithm down significantly.
 
 After attempting to fix this by writing a new, specialised, and therefore faster `deepcopy`
 function, I decided it would be better to use the same object, and instead store changes to the matrix in the
-appropriate recursion level in a `list` named `columns`. As the algorithm works back up the recursion levels, it will
-undo these changes, restoring the matrix back to how it was for the level above it.
+appropriate recursion level in a `list` named `removed`. As the algorithm works back up the recursion levels, it will
+undo these changes by calling `remove_solution`, restoring the matrix back to how it was for the level above it.
 
 ### Constraint Propagation
 
-The act of removing rows and columns after a row is selected is a strict and efficient way of propagating constraints.
+The act of removing rows and columns from matrix `A` after a row is chosen is a strict and efficient way of propagating
+constraints.
+
+### Edge Cases
+
+#### Empty Grid
+
+If the agent receives an empty grid, it will generate a random solved sudoku. I don't know if this will always be the
+same, but the following is the grid that it consistently returns on my machine. Perhaps different versions of python
+will convert a `set` to a `list` differently: this is the only "random" aspect of my program that I can think of.
+
+```
+[[4 7 1 3 8 6 5 9 2]
+ [9 3 2 5 4 7 6 1 8]
+ [8 5 6 2 1 9 7 4 3]
+ [2 9 3 1 6 8 4 5 7]
+ [6 8 7 9 5 4 3 2 1]
+ [1 4 5 7 3 2 8 6 9]
+ [7 6 9 8 2 5 1 3 4]
+ [3 2 4 6 7 1 9 8 5]
+ [5 1 8 4 9 3 2 7 6]]
+```
+
+#### Full Grid
+
+If the agent receives a full grid (with no `0` values), an **error grid** is returned, regardless of whether the
+received sudoku is a goal or not. This is a sudoku solver, not a sudoku checker.
 
 ## Optimisations
 
@@ -277,8 +301,8 @@ time it took.
 
 As the `copy.deepcopy` function is made to make an independent copy of an **arbitrary** object, it will be doing a lot
 of unnecessary processing in most cases. Looking at the source code in `copy.py` shows the amount of checks that occur
-everytime a copy is made. These checks would be necessary if the object I was copying contained references to itself [5]
-, however in this particular case, it doesn't.
+everytime a copy is made. These checks would be necessary if the object I was copying contained references to itself
+(Python Software Foundation, 2021), however in this particular case, it doesn't.
 
 Writing a new `deepcopy` method was as simple as creating a new object of the same class, and setting the fields to the
 values of the copied object.
@@ -296,25 +320,20 @@ def __deepcopy__(self, memodict={}):
     cls = self.__class__
     state = cls.__new__(cls)
     state.values = self.values
-    state.a = {k: set(self.a[k]) for k in self.a.keys()}  # set() is quicker than copy()
+    state.a = {k: set(self.a[k]) for k in self.a.keys()}  # set() appears to be quicker than copy()
     state.solvable = self.solvable
     state.solution = self.solution
     return state
 ```
 
 > **Note**: This is a precise, fast and error-prone way of copying an object. This approach requires you to update
-> `deepcopy` everytime a new field is added to the class that is being copied.
+> `deepcopy` every time a new field is added to the target class.
 
+### Removing and Restoring RCVs
 
-This was being used for a while in my second attempt, though now it uses the `select_row`,  `deselect_row`,
-`add_solution` and `remove_solution` functions to make and abandon changes made to the same object through the
-recursions.
-
-### Selecting and Deselecting Rows
-
-Instead of making a whole copy of an object just to change a few values in the huge matrix, it is much faster to use the
-same object throughout the algorithm and keep track of the changes that you have made, and then reverting these changes
-before returning.
+The new `deepcopy` being used for a while in my second attempt, though now it uses the `add_solution`, `remove_solution`
+functions to make and abandon changes made to the same object through the recursions, by calling
+`remove_conflicting_rcvs`, and `restore_rcvs` respectfully.
 
 ### Removed Enums
 
@@ -322,22 +341,22 @@ To reduce bugs and improve readability, I was using enums for constraints. This 
 recognised. However, using strings is much faster.
 
 After researching online, I found that Python's slow enums have been discussed, and were at one point 20x slower than
-normal lookups (Python 3.4) [6]. This has been fixed, though there is still an open issue on the python bug tracker
-complaining about the speed for Python 3.9. [7]
+normal lookups (Python 3.4) (craigh, 2015). This has been fixed, though there is still an open issue on the python bug
+tracker complaining about the speed for Python 3.9. (MrMrRobat, 2019)
 
 I converted all enums to strings at the end of development of my second attempt.
 
 ## Learning Outcomes
 
-- Depth-First Search, Constraint Propagation and Forward Checking
+- Depth-first search, constraint propagation and forward checking
 
-- Exact Cover Problems and Knuth's Algorithm X
+- Exact cover and Knuth's Algorithm X
 
-- Implementing Previously-Theoretical Ideas
+- Implementing previously-theoretical Ideas
 
-- Python's Enums are Slow
+- Python's enums are Slow
 
-- How to Spell "Sudoku"
+- How to spell "sudoku"
 
 ## Future Development
 
@@ -345,46 +364,43 @@ Early attempts at this project included functionality to solve sudokus that were
 feature would be untested, and most likely riddled with bugs, I decided that for my final submission I should submit
 code with the 9x9 grid assumed and expected throughout.
 
-I believe it would be a good exercise to re-implement the lost generality: perhaps I could aim to solve **16x16 
+I believe it would be a good exercise to re-implement the lost generality: perhaps I could aim to solve **16x16
 hexadecimal sudokus**, such as this one:
 
 ![Hex sudoku](http://4.bp.blogspot.com/-OuYfLL6Ofvo/Ut-Ko5IffJI/AAAAAAAAAGE/fNqAj8Q8U1A/s1600/2014-01-22-puzzle.png)
 
-[8]
+_(mattspuzzleblog, 2014)_
+
+**Multi-threading could also be implemented, to test different rows of the matrix simultaneously.**
 
 ## References
 
-[1] Knuth, Donald. 2000.
-_Dancing Links_
-Available from: https://www.ocf.berkeley.edu/~jchu/publicportal/sudoku/0011047.pdf
+Knuth, D. 2000. Dancing Links. _Millenial Perspectives in Computer Science, 2000, 187--214_, Knuth migration 11/2004, pp
+4
+
+Dahlke, K. 2019.
+_Exact Cover_ [Online]. Available from: https://www.mathreference.com/lan-cx-np,excov.html
 [Accessed 11 March 2021]
 
-[2] Dahike, Karl. 2019.
-_Exact Cover_ [Online]
-Available from: https://www.mathreference.com/lan-cx-np,excov.html
+G, Andy. 2011.
+_Solving Sudoku, Revisited_ [Online]. Andy G's Blog. Available
+from: https://gieseanw.wordpress.com/2011/06/16/solving-sudoku-revisited/
 [Accessed 11 March 2021]
 
-[3] _removed_
-
-[4] G, Andy. 2011.
-_Solving Sudoku, Revisited_ [Online]
-Available from: https://gieseanw.wordpress.com/2011/06/16/solving-sudoku-revisited/
+Python Software Foundation. 2021.
+_copy — Shallow and deep copy operations_ [Online]. Python 3.9.2 Documentation. Available
+from: https://docs.python.org/3/library/copy.html
 [Accessed 11 March 2021]
 
-[5] Python Software Foundation. 2021.
-_copy — Shallow and deep copy operations_
-Available from: https://docs.python.org/3/library/copy.html
-[Accessed 11 March 2021]
-
-[6] craigh, 2015.
+craigh, 2015.
 _Enum member lookup is 20x slower than normal class attribute lookup_ [Online]. Available
 from: https://bugs.python.org/issue23486
 [Accessed 11 March 2021]
 
-[7] MrMrRobat, 2019.
+MrMrRobat, 2019.
 _Increase Enum performance_ [Online]. Available from: https://bugs.python.org/issue39102
 [Accessed 11 March 2021]
 
-[8] Matt, 2014. 2014-01-22 Hexadecimal Sudoku Available
+mattspuzzleblog, 2014. 2014-01-22 Hexadecimal Sudoku Available
 from: http://mattspuzzleblog.blogspot.com/2014/01/2014-01-22-hexadecimal-sudoku.html
 [Accessed 11 March 2021]

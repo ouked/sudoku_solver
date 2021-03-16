@@ -2,6 +2,35 @@ import numpy as np
 
 
 class SudokuState:
+    # dict of constraints, RCV as keys
+    get_constraints = {}
+
+    # Populate get_constraints
+    for r in range(9):
+        block_y = r // 3
+
+        for c in range(9):
+            block_x = c // 3
+            b = (block_y * 3) + block_x
+
+            for v in range(1, 10):
+                # Truncates r, c down to nearest multiple of 3
+                # Get block id
+                #   0 1 2
+                #   3 4 5
+                #   6 7 8
+
+                get_constraints[(r, c, v)] = [
+                    # Every cell must have a value, (x, y)
+                    ("Cell", (r, c)),
+                    # Every row must contain each value, (row, val)
+                    ("Row", (r, v)),
+                    # Every column must contain each value, (column, val)
+                    ("Col", (c, v)),
+                    # Every block must contain each value, (block, val)
+                    ("Block", (b, v))
+                ]
+
     def __init__(self, values: np.ndarray):
         """
         Create a new Sudoku State.
@@ -12,128 +41,139 @@ class SudokuState:
         self.solution = {}
         self.values = values
 
-        # Matrix A
+        # matrix A
         self.a = {
             c: set() for c in (
-                # Every cell must have a value, (x, y)
+                # Every cell must contain a value, (col, row)
                     [("Cell", (x, y)) for x in range(9) for y in range(9)] +
+
                     # Every row must contain each value, (row, val)
                     [("Row", (row, val)) for row in range(9) for val in range(1, 10)] +
+
                     # Every column must contain each value, (column, val)
                     [("Col", (col, val)) for col in range(9) for val in range(1, 10)] +
+
                     # Every block must contain each value, (block, val)
-                    [("Block", (block, val)) for block in range(9) for val in range(1, 10)]
+                    [("Block", (blk, val)) for blk in range(9) for val in range(1, 10)]
             )
         }
 
-        for rcv, consts in self.b.items():
-            [self.a[c].add(rcv) for c in consts]
+        # Populate A with the associated RCVs
+        for rcv, consts in SudokuState.get_constraints.items():
+            for c in consts:
+                self.a[c].add(rcv)
 
         # Update constraints to reflect initial state
         for (y, x), value in np.ndenumerate(values):
             if value != 0:
                 try:
-                    self.select_row((y, x, value))
+                    self.remove_conflicting_rcvs((y, x, value))
                 except KeyError:
                     self.solvable = False
 
-    def select_row(self, rcv: (int, int, int)):
+    def remove_conflicting_rcvs(self, rcv: (int, int, int)):
         """
-        Select the corresponding row to the rcv. Removes rcv from other columns
+        Removes RCV from other constraints
         :param rcv: Row, Column, Value tuple to look up
-        :return: None
+        :return: list of removed RCVs
         """
         # This is pretty nasty, but can't think of another way of doing it. Maybe pd.dataframes?
 
-        # Popped columns
-        columns = []
+        # List of removed RCVs (so they can be restored later)
+        removed_rcvs = []
 
-        # For constraint rcv satisfies
-        for c in SudokuState.b[rcv]:
+        # For constraint RCV satisfies
+        for c in SudokuState.get_constraints[rcv]:
 
-            # For other rcv that ALSO satisfy c
+            # For other RCV that ALSO satisfy c
             for other_rcv in self.a[c]:
 
-                # For other constraints that the other rcv satisfies
-                for other_c in self.b[other_rcv]:
+                # For other constraints that the other RCV satisfies
+                for other_c in SudokuState.get_constraints[other_rcv]:
 
                     # Remove other_rcv from the other constraint
-                    # (Remove row)
                     if other_c != c:
                         self.a[other_c].remove(other_rcv)
 
-            # Pop column from this row, and save for later
-            # (Remove Column)
-            columns.append(self.a.pop(c))
+            removed_rcvs.append(self.a.pop(c))
 
-        return columns
+        return removed_rcvs
 
-    def deselect_row(self, rcv: (int, int, int), columns):
+    def restore_rcvs(self, rcv: (int, int, int), removed):
         """
-        Deselect the given row. Adds the rcv from other columns
-        :param rcv: Row, Column, Value to deselect
-        :param columns: Columns to restore
+        Undoes the affect of remove_conflicting_rcvs. Adds RCVs back to their constraints.
+        :param rcv: Row, Column, Value that was used to remove values
+        :param removed: Removed columns to restore
         :return: None
         """
-        # Undo the actions of select
-
-        # Columns is an ordered list, so we must work backwards
-        for c in reversed(SudokuState.b[rcv]):
+        # removed is an ordered list, so we must work backwards
+        for c in reversed(SudokuState.get_constraints[rcv]):
             # Get column from list
-            self.a[c] = columns.pop()
+            self.a[c] = removed.pop()
             # For other rcv that satisfy c
             for other_rcv in self.a[c]:
                 # For other constraints that the other rcv satisfies
-                for other_c in self.b[other_rcv]:
+                for other_c in SudokuState.get_constraints[other_rcv]:
                     self.a[other_c].add(other_rcv)
 
     def add_solution(self, rcv: (int, int, int)):
         """
-        Add the given rcv to solutions
+        Add the given RCV to solutions, and remove associated RCVs from matrix
         :param rcv: Row, Column, Value tuple to add to solution
-        :return: Updated solutions
+        :return: Removed RCVs
         """
         r, c, v = rcv
         self.solution[(r, c)] = v
-        return self.solution
 
-    def remove_solution(self, rcv: (int, int, int)):
+        removed_rcvs = self.remove_conflicting_rcvs(rcv)
+
+        return removed_rcvs
+
+    def remove_solution(self, rcv: (int, int, int), removed):
         """
-        Remove the given rcv from solutions
+        Remove the given RCV from solutions, and restores associated RCVs to matrix
+        :param removed:
         :param rcv: Row, Column, Value tuple to add to solution
         :return: Updated solutions
         """
         r, c, v = rcv
         del self.solution[r, c]
+        self.restore_rcvs(rcv, removed)
+        return self.solution
 
     def pick_constraint(self) -> ((str, (int, int, int)), set):
         """
-        Picks a non-empty constraint
-        :return: Constraint, {related RCVs}
+        Picks the next non-empty constraint to satisfy
+        :return: Constraint
         """
-        # Get all non-empty constraints
-        consts = [v for v in self.a if self.a[v]]
 
-        # Check there are constraints left
-        if not consts:
-            # self.solvable = False
-            return
+        min_n_rcvs = float('inf')
+        result = None
 
-        # Get constraint with shortest number of possible RCVs
-        result = min(consts, key=lambda k: len(self.a[k]))
+        # For every constraint
+        for c in self.a:
+            # Number of associated RCVs
+            n_rcvs = len(self.a[c])
 
-        return result, self.a[result]
+            # Check if there are fewer than the running minimum
+            if n_rcvs < min_n_rcvs:
+
+                # Update minimum and save constraint
+                min_n_rcvs = n_rcvs
+                result = c
+
+                # 1 is the minimum number of RCVs, so the first one we find will do.
+                if n_rcvs == 1:
+                    break
+
+        return result
 
     def is_goal(self):
         """
         Is this state a goal?
         :return: True if this state is a goal
         """
-        # An unsolvable state can't be a goal
-        if not self.solvable:
-            return False
-
-        # A goal state will have no constraints left in self.a
+        # A goal state will have no constraints left to fulfill in matrix A
         return all(item is None for item in self.a)
 
     def apply_solution(self):
@@ -141,62 +181,34 @@ class SudokuState:
         Blindly apply the solution set to the initial values
         :return: updated values array
         """
-        for key in self.solution:
-            # Get X, Y, and value of cell
-            value = self.solution[key]
-            y, x = key
-
-            self.values[y][x] = value
+        # Get RCV from solutions, and apply to grid.
+        for y, x in self.solution.keys():
+            self.values[y, x] = self.solution[y, x]
 
         return self.values
-
-    entries = (
-        (r, c, v)
-        # Row (0-8)
-        for r in range(9)
-        # Column (0-8)
-        for c in range(9)
-        # Value (1-9)
-        for v in range(1, 10))
-
-    # Dict relating rcv values to their associated constraints
-    b = {}
-    for (r, c, v) in entries:
-        # Get block x, y from "global" x, y. Rounds x, y down to nearest 3.
-        block_y, block_x = map(lambda x: (x // 3), (r, c))
-
-        # Get block id. 3 blocks in a row.
-        block = (block_y * 3) + block_x
-
-        b[(r, c, v)] = [
-            # Every cell must have a value, (x, y)
-            ("Cell", (r, c)),
-            # Every row must contain each value, (row, val)
-            ("Row", (r, v)),
-            # Every column must contain each value, (column, val)
-            ("Col", (c, v)),
-            # Every block must contain each value, (block, val)
-            ("Block", (block, v))
-        ]
-
-    error_grid = np.full((9, 9), fill_value=-1)
 
 
 def sudoku_solver(state: np.ndarray) -> np.ndarray:
     """
-    Solves the given sudoku.
+    Solves the given sudoku, if there are empty cells.
+    If there are no empty cells, an error grid is returned.
     :param state: 9x9 sudoku grid to solve
-    :return: 9x9 solved sudoku grid, or error grid
+    :return: 9x9 solved sudoku grid, or error grid.
     """
-    result = backtrack(SudokuState(state))
+    # Value to return if sudoku is unsolvable
+    error = np.full((9, 9), fill_value=-1)
+
+    if np.count_nonzero(state == 0) == 0:
+        return error
+
+    # Make SudokuState with received array
+    sudoku_state = SudokuState(state)
+
+    # Solve sudoku, if it appears to be solvable
+    result = backtrack(sudoku_state) if sudoku_state.solvable else None
+
     # Return result if valid
-    if result is not None:
-        return result.apply_solution()
-    else:
-        return SudokuState.error_grid
-
-
-
+    return error if result is None else result.apply_solution()
 
 
 def backtrack(state: SudokuState) -> SudokuState or None:
@@ -205,34 +217,32 @@ def backtrack(state: SudokuState) -> SudokuState or None:
     :param state: State to solve
     :return: Solved state
     """
-    # Pick a column
-    pick = state.pick_constraint()
+    # Pick a constraint to satisfy
+    const = state.pick_constraint()
 
     # No more constraints to satisfy
-    if pick is None:
+    if const is None:
         return None
 
-    const, rows = pick
-    values = list(rows)
+    # List of satisfying RCV (row, column, value) tuples
+    satisfying_rcvs = list(state.a[const])
 
-    for rcv in values:
-        # Using select_row and deselect_row means that we don't need to make (deep) copies of the state, which are
-        # expensive.
+    for rcv in satisfying_rcvs:
+        # Add RCV to solutions, and save removed conflicting RCVs
+        removed = state.add_solution(rcv)
 
-        # Select the row, get and remove the associated columns
-        columns = state.select_row(rcv)
-        # Add rcv of row to solutions
-        state.add_solution(rcv)
-
-        # Return this state if it's correct
+        # Return this state if it's a goal
         if state.is_goal():
             return state
 
-        # Continue working on this state
+        # Continue trying this RCV
         deep_state = backtrack(state)
-        if deep_state is not None and deep_state.is_goal():
+
+        # Was a solution found?
+        if deep_state is not None:
             return deep_state
 
-        # Deselect and remove rcv from solution, so that we can try the next rcv
-        state.deselect_row(rcv, columns)
-        state.remove_solution(rcv)
+        # This RCV doesn't lead to a solved sudoku
+
+        # Remove RCV from solution and restore the matrix, so that we can try the next RCV
+        state.remove_solution(rcv, removed)
