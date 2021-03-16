@@ -3,6 +3,7 @@ import time
 import numpy as np
 from collections import Counter
 
+# !!! Previous, outdated attempt. exact_cover.py is faster. This is here for archival purposes.
 
 class SudokuState:
     valid_row_cache = {}
