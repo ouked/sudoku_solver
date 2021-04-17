@@ -1,7 +1,16 @@
 # Sudoku Solver 🧩
 
 An agent to solve sudoku puzzles by approaching them as exact cover problems, made for my Artifical Intelligence module
-at University of Bath. On my machine, it can solve a "hard" sudoku in under 7 milliseconds.
+at University of Bath. On my machine, it can solve a "hard" sudoku in under 7 milliseconds. This work was awarded 100%.
+
+## Feedback
+
+>Your submission passed all of our tests with flying colours and within the time limit, even on the hardest sudokus.
+Very ambitious and interesting choice of algorithm - well done for pulling it off! Your readme shows very high levels of technical and conceptual sophistication, well done.
+Extremely strong work. Well done. The difference between the very top grades is just down to time and presentation.
+>
+>Final grade: 100/100
+
 
 ## Usage
 
