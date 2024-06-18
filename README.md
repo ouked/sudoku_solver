@@ -1,7 +1,8 @@
 # Sudoku Solver 🧩
 
-An agent to solve sudoku puzzles by approaching them as exact cover problems, made for my Artifical Intelligence module
-at University of Bath. On my machine, it can solve a "hard" sudoku in under 7 milliseconds. This work was awarded 100%.
+> ⚠️ **Caveat Plagiarius**: Certain universities in spa cities have reported instances of plagiarism involving this repository. Please remember that plagiarism is cheating, and using this solution as-is will not succeed as the marking method has since changed. Feel free to use this code for reference, but do your own research and create your own work.
+
+An agent to solve sudoku puzzles by approaching them as exact cover problems, made for my Artifical Intelligence module. On my machine, it can solve a "hard" sudoku in under 7 milliseconds. This work was awarded 100%.
 
 ## Feedback
 
